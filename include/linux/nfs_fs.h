@@ -56,6 +56,8 @@
 #include <linux/nfs4.h>
 #include <linux/nfs_xdr.h>
 #include <linux/nfs_fs_sb.h>
+#include <linux/path.h>
+#include <linux/mount.h>
 
 #include <linux/mempool.h>
 
@@ -76,6 +78,7 @@ struct nfs_access_entry {
 };
 
 struct nfs4_state;
+
 struct nfs_open_context {
 	atomic_t count;
 	struct path path;
