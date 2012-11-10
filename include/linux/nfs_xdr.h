@@ -14,6 +14,12 @@
 #define NFS_DEF_FILE_IO_SIZE	(4096U)
 #define NFS_MIN_FILE_IO_SIZE	(1024U)
 
+#ifndef RPCBIND_MAXNETIDLEN
+#define RPCBIND_MAXNETIDLEN  (4u)
+/* ipv6 strlen + uaddr sizeof(".255.255") */
+#define RPCBIND_MAXUADDRLEN  (53u)
+#endif
+
 struct nfs_fsid {
 	uint64_t		major;
 	uint64_t		minor;
