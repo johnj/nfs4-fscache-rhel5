@@ -66,6 +66,9 @@
  */
 #define NFS_RPC_SWAPFLAGS		(RPC_TASK_SWAPPER|RPC_TASK_ROOTCREDS)
 
+/* for lockd */
+#define NFS_ADDR(inode)                 (RPC_PEERADDR(NFS_CLIENT(inode)))
+
 /*
  * NFSv3/v4 Access mode cache entry
  */
@@ -572,10 +575,14 @@ nfs_fileid_to_ino_t(u64 fileid)
 
 extern void * nfs_root_data(void);
 
-#define nfs_wait_event(clnt, wq, condition)				\
-({									\
-	int __retval = wait_event_killable(wq, condition);		\
-	__retval;							\
+#define nfs_wait_event(clnt, wq, condition)			\
+({								\
+	int __retval = 0;					\
+	sigset_t oldmask;					\
+	rpc_clnt_sigmask(clnt, &oldmask);			\
+	__retval = wait_event_interruptible(wq, condition);	\
+	rpc_clnt_sigunmask(clnt, &oldmask);			\
+	__retval;						\
 })
 
 #define NFS_JUKEBOX_RETRY_TIME (5 * HZ)

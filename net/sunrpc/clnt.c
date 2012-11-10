@@ -240,6 +240,99 @@ struct rpc_clnt *rpc_create_client(struct rpc_xprt *xprt, char *servname,
 }
 
 /*
+ * rpc_create - create an RPC client and transport with one call
+ * @args: rpc_clnt create argument structure
+ *
+ * Creates and initializes an RPC transport and an RPC client.
+ *
+ * It can ping the server in order to determine if it is up, and to see if
+ * it supports this program and version.  RPC_CLNT_CREATE_NOPING disables
+ * this behavior so asynchronous tasks can also use rpc_create.
+ */
+struct rpc_clnt *rpc_create(struct rpc_create_args *args)
+{
+	struct rpc_xprt *xprt;
+	struct rpc_clnt *clnt;
+	struct xprt_create xprtargs = {
+		.ident = args->protocol,
+		.srcaddr = args->saddress,
+		.dstaddr = args->address,
+		.addrlen = args->addrsize,
+		.bc_xprt = args->bc_xprt,
+	};
+	char servername[48];
+
+	/*
+	 * If the caller chooses not to specify a hostname, whip
+	 * up a string representation of the passed-in address.
+	 */
+	if (args->servername == NULL) {
+		servername[0] = '\0';
+		switch (args->address->sa_family) {
+		case AF_INET: {
+			struct sockaddr_in *sin =
+					(struct sockaddr_in *)args->address;
+			snprintf(servername, sizeof(servername), "%pI4",
+				 &sin->sin_addr.s_addr);
+			break;
+		}
+		case AF_INET6: {
+			struct sockaddr_in6 *sin =
+					(struct sockaddr_in6 *)args->address;
+			snprintf(servername, sizeof(servername), "%pI6",
+				 &sin->sin6_addr);
+			break;
+		}
+		default:
+			/* caller wants default server name, but
+			 * address family isn't recognized. */
+			return ERR_PTR(-EINVAL);
+		}
+		args->servername = servername;
+	}
+
+	xprt = xprt_create_transport(&xprtargs);
+	if (IS_ERR(xprt))
+		return (struct rpc_clnt *)xprt;
+
+	/*
+	 * By default, kernel RPC client connects from a reserved port.
+	 * CAP_NET_BIND_SERVICE will not be set for unprivileged requesters,
+	 * but it is always enabled for rpciod, which handles the connect
+	 * operation.
+	 */
+	xprt->resvport = 1;
+	if (args->flags & RPC_CLNT_CREATE_NONPRIVPORT)
+		xprt->resvport = 0;
+
+	clnt = rpc_new_client(args, xprt);
+	if (IS_ERR(clnt))
+		return clnt;
+
+	if (!(args->flags & RPC_CLNT_CREATE_NOPING)) {
+		int err = rpc_ping(clnt);
+		if (err != 0) {
+			rpc_shutdown_client(clnt);
+			return ERR_PTR(err);
+		}
+	}
+
+	clnt->cl_softrtry = 1;
+	if (args->flags & RPC_CLNT_CREATE_HARDRTRY)
+		clnt->cl_softrtry = 0;
+
+	if (args->flags & RPC_CLNT_CREATE_AUTOBIND)
+		clnt->cl_autobind = 1;
+	if (args->flags & RPC_CLNT_CREATE_DISCRTRY)
+		clnt->cl_discrtry = 1;
+	if (!(args->flags & RPC_CLNT_CREATE_QUIET))
+		clnt->cl_chatty = 1;
+
+	return clnt;
+}
+EXPORT_SYMBOL_GPL(rpc_create);
+
+/*
  * This function clones the RPC client structure. It allows us to share the
  * same transport while varying parameters such as the authentication
  * flavour.
